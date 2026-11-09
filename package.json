@@ -28,6 +28,7 @@
     "productName": "Chat Frog",
     "files": [
       "main.js",
+      "preload.js",
       "index.html",
       "package.json",
       "vendor/**/*"

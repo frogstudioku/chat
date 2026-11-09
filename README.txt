@@ -16,3 +16,9 @@ LUPA PASSWORD (kirim kode via email) - atur SMTP di server sebelum npm run serve
    set SMTP_FROM=TeamChat <akun@perusahaan.com>
 Tanpa SMTP, kode reset hanya tampil di jendela server (mode uji).
 Login memakai USERNAME + password. Email hanya untuk reset password.
+
+BOT UJI COBA: akun @frogbot otomatis ada di daftar chat. Kirim teks, file, atau /help, /file, /spam, /time, /ping untuk menguji semua fitur sebelum menambah user lain.
+
+DIAGNOSA EMAIL: saat server dijalankan, jendela server menampilkan "Email (SMTP): OK" atau "GAGAL - alasan".
+Jika email gagal terkirim, kode reset tetap tampil di jendela server ([ADMIN]) agar bisa diberikan manual.
+Untuk server email dengan sertifikat internal, tambahkan "SMTP_ALLOW_SELF_SIGNED": "true" di config.json.

@@ -4,13 +4,13 @@ const express = require('express'), http = require('http'), { Server } = require
 const multer = require('multer'), bcrypt = require('bcryptjs'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const BASE = process.pkg ? path.dirname(process.execPath) : __dirname; // folder .exe (mode tanpa Node.js)
-try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(path.join(BASE, 'config.json'), 'utf8')))) process.env[k] = String(v); } catch (e) {} // config.json opsional
+try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(path.join(BASE, 'config.json'), 'utf8')))) process.env[k] = String(v); } catch (e) { if (e.code !== 'ENOENT') console.log('PERINGATAN config.json tidak valid (cek koma/tanda kutip): ' + e.message); } // config.json opsional
 const PORT = process.env.PORT || 3000, DOMAIN = (process.env.ALLOWED_DOMAIN || '').toLowerCase();
 const DATA = path.join(BASE, 'data'); fs.mkdirSync(DATA + '/files', { recursive: true });
 const DBF = DATA + '/db.json';
 const db = fs.existsSync(DBF) ? JSON.parse(fs.readFileSync(DBF)) : { users: {}, msgs: [], tokens: {}, files: {} };
 const save = () => fs.writeFileSync(DBF, JSON.stringify(db));
-const mailer = process.env.SMTP_HOST ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: +(process.env.SMTP_PORT || 465), secure: (process.env.SMTP_PORT || 465) == 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }) : null;
+const mailer = process.env.SMTP_HOST ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: +(process.env.SMTP_PORT || 465), secure: (process.env.SMTP_PORT || 465) == 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }, tls: process.env.SMTP_ALLOW_SELF_SIGNED === 'true' ? { rejectUnauthorized: false } : undefined }) : null;
 async function sendCode(to, code) {
   if (!mailer) return console.log('[DEV] SMTP belum diatur. Kode reset untuk ' + to + ': ' + code);
   await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject: 'Kode reset password TeamChat', text: 'Kode reset password Anda: ' + code + '\nBerlaku 10 menit. Abaikan email ini jika Anda tidak memintanya.' });
@@ -77,7 +77,7 @@ app.post('/api/forgot', async (q, r) => {
     if (!(old && Date.now() - old.sent < 60000)) {
       const code = String(crypto.randomInt(100000, 1000000));
       db.resets[u.username] = { hash: sha(code), exp: Date.now() + 10 * 60000, tries: 0, sent: Date.now() }; save();
-      try { await sendCode(u.email, code); } catch (e) { console.error('Gagal kirim email:', e.message); }
+      try { await sendCode(u.email, code); } catch (e) { console.error('GAGAL kirim email ke ' + u.email + ': ' + e.message); console.log('[ADMIN] Kode reset untuk @' + u.username + ' (berikan manual jika perlu): ' + code); }
     }
   }
   r.json({ ok: true }); // respons sama agar username tidak bisa ditebak
@@ -103,6 +103,33 @@ app.post('/api/contacts', auth, (q, r) => {
   if (!db.users[n] || n === q.user.username) return r.status(404).json({ error: 'Username tidak ditemukan' });
   if (!q.user.contacts.includes(n)) { q.user.contacts.push(n); save(); }
   r.json({ contacts: q.user.contacts });
+});
+const IMG_OK = /^image\/(jpeg|png|webp|gif)$/;
+const avUp = multer({ dest: DATA + '/files', limits: { fileSize: 2 * 1024 * 1024 } });
+app.post('/api/avatar', auth, (q, r) => avUp.single('file')(q, r, err => {
+  if (err) return r.status(400).json({ error: 'Foto terlalu besar (maks 2 MB)' });
+  if (!q.file || !IMG_OK.test(q.file.mimetype)) { if (q.file) fs.unlink(q.file.path, () => {}); return r.status(400).json({ error: 'File harus berupa gambar (JPG/PNG/WebP)' }); }
+  const u = q.user; if (u.avatar) fs.unlink(path.join(DATA, 'files', u.avatar.file), () => {});
+  u.avatar = { file: q.file.filename, type: q.file.mimetype, v: Date.now() }; save();
+  io.emit('profile', { username: u.username, v: u.avatar.v }); r.json({ v: u.avatar.v });
+}));
+app.post('/api/avatar/remove', auth, (q, r) => {
+  const u = q.user; if (u.avatar) fs.unlink(path.join(DATA, 'files', u.avatar.file), () => {});
+  u.avatar = null; save(); io.emit('profile', { username: u.username, v: 0 }); r.json({ ok: true });
+});
+app.get('/api/avatar/:u', auth, (q, r) => {
+  const u = db.users[norm(q.params.u)]; if (!u || !u.avatar) return r.sendStatus(404);
+  r.type(u.avatar.type); r.set('Cache-Control', 'private, max-age=86400');
+  fs.createReadStream(path.join(DATA, 'files', path.basename(u.avatar.file))).pipe(r);
+});
+app.get('/api/profiles', auth, (q, r) => {
+  const out = {}; [q.user.username, ...q.user.contacts].forEach(n => { const u = db.users[n]; if (u && u.avatar) out[n] = u.avatar.v; }); r.json(out);
+});
+app.post('/api/read', auth, (q, r) => { q.user.read = q.user.read || {}; q.user.read[norm(q.body.with)] = Date.now(); save(); r.json({ ok: true }); });
+app.get('/api/unread', auth, (q, r) => {
+  if (!q.user.read) { q.user.read = {}; q.user.contacts.forEach(c => q.user.read[c] = Date.now()); save(); } // pesan lama dianggap sudah dibaca
+  const out = {}; db.msgs.forEach(m => { if (m.to === q.user.username && m.ts > (q.user.read[m.from] || 0)) out[m.from] = (out[m.from] || 0) + 1; });
+  r.json(out);
 });
 app.get('/api/messages/:with', auth, (q, r) => {
   const a = q.user.username, b = q.params.with;
@@ -135,4 +162,7 @@ server.listen(PORT, '0.0.0.0', () => {
   const ips = [].concat(...Object.values(require('os').networkInterfaces())).filter(i => i.family === 'IPv4' && !i.internal).map(i => i.address);
   console.log('Isi "Alamat server" di aplikasi dengan salah satu:'); ips.forEach(ip => console.log('   http://' + ip + ':' + PORT));
   console.log('Data tersimpan di: ' + DATA);
+  console.log(fs.existsSync(path.join(BASE, 'config.json')) ? 'config.json: dimuat' : 'config.json: TIDAK ditemukan di ' + BASE);
+  if (mailer) mailer.verify().then(() => console.log('Email (SMTP): OK - ' + process.env.SMTP_HOST), e => console.log('Email (SMTP): GAGAL - ' + e.message));
+  else console.log('Email (SMTP): belum diatur, kode reset hanya tampil di jendela ini');
 });

@@ -37,7 +37,9 @@
   },
   "pkg": {
     "assets": [
-      "index.html"
+      "index.html",
+      "node_modules/socket.io/client-dist/**/*",
+      "node_modules/socket.io-client/dist/**/*"
     ]
   }
 }

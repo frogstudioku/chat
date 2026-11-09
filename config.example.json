@@ -1,0 +1,9 @@
+{
+  "PORT": 3000,
+  "ALLOWED_DOMAIN": "perusahaan.com",
+  "SMTP_HOST": "smtp.gmail.com",
+  "SMTP_PORT": 465,
+  "SMTP_USER": "akun@perusahaan.com",
+  "SMTP_PASS": "app-password",
+  "SMTP_FROM": "Chat Frog <akun@perusahaan.com>"
+}

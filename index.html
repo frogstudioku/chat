@@ -82,6 +82,8 @@ button.ghost{background:var(--field);color:var(--ink);box-shadow:none;border:1px
   <input type="file" id="pf" accept="image/*" hidden>
   <div class="prow"><button id="pchg">Pilih foto</button><button class="ghost" id="prem">Hapus foto</button></div>
   <div class="err" id="perr"></div><button class="ghost" id="pcl">Tutup</button></div></div>
+<div id="cf" class="ov"><div class="glass pbox"><h1>Keluar?</h1><div class="sub" id="cft"></div>
+  <div class="prow"><button id="cfy">Keluar</button><button class="ghost" id="cfn">Batal</button></div></div></div>
 <script>
 const $=id=>document.getElementById(id);
 const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
@@ -120,16 +122,17 @@ async function start(){
     S.contacts=[o,...S.contacts.filter(x=>x!==o)];if(o===S.cur)addMsg(m);
     if(m.from!==S.me){ding();if(o===S.cur&&document.hasFocus())markRead(o);else{S.unread[o]=(S.unread[o]||0)+1;if(!document.hasFocus())notify(m)}}
     renderList();updateTotal()});
-  $('login').style.display='none';$('app').style.display='flex';$('logo').classList.add('live');$('logo').title='Klik untuk keluar';$('me').textContent='@'+S.me;renderList()}
-async function logout(){
-  if(!S.tok)return;const ok=confirm('Keluar dari akun @'+S.me+'?');refocus();if(!ok)return;
+  $('login').style.display='none';$('app').style.display='flex';setTimeout(refocus,50);try{document.activeElement.blur()}catch(e){}$('logo').classList.add('live');$('logo').title='Klik untuk keluar';$('me').textContent='@'+S.me;renderList()}
+function logout(){if(!S.tok)return;$('cft').textContent='Keluar dari akun @'+S.me+'?';$('cf').classList.add('on')}
+async function doLogout(){$('cf').classList.remove('on');
+  
   try{await api('/api/logout',{method:'POST'})}catch(e){}
   try{S.sock&&S.sock.disconnect()}catch(e){}
   S.tok=S.me=S.cur=S.sock=null;S.contacts=[];S.av={};S.unread={};updateTotal();
   $('app').style.display='none';$('login').style.display='flex';$('logo').classList.remove('live');$('logo').title='';
   $('msgs').innerHTML='<div class="empty">Pilih kontak untuk mulai chat</div>';$('head').innerHTML='';$('list').innerHTML='';$('pw').value='';
   setMode('login','Anda sudah keluar.')}
-$('logo').onclick=logout;
+$('logo').onclick=logout;$('cfy').onclick=doLogout;$('cfn').onclick=()=>$('cf').classList.remove('on');$('cf').onclick=e=>{if(e.target===$('cf'))$('cf').classList.remove('on')};
 const avatar=(u,x='')=>u==='frogbot'?`<div class="av ${x}">🐸</div>`:S.av[u]?`<img class="av ${x}" alt="" src="${S.url}/api/avatar/${encodeURIComponent(u)}?token=${S.tok}&v=${S.av[u]}">`:`<div class="av ${x}">${u[0]}</div>`;
 function renderMe(){$('meAv').innerHTML=avatar(S.me);$('pprev').innerHTML=avatar(S.me)}
 function head(){$('head').innerHTML=`${avatar(S.cur)}<b>@${S.cur}</b>`}
@@ -144,11 +147,11 @@ function updateTotal(){const n=Object.values(S.unread).reduce((a,b)=>a+b,0);docu
 const markRead=o=>{S.unread[o]=0;updateTotal();renderList();api('/api/read',{method:'POST',body:JSON.stringify({with:o})}).catch(()=>{})};
 async function loadUnread(){try{S.unread=await api('/api/unread')}catch(e){}renderList();updateTotal()}
 function notify(m){try{const n=new Notification('@'+m.from,{body:m.text||(m.file?'📎 '+m.file.name:''),silent:true});n.onclick=()=>{window.app&&app.refocus();open(m.from)};window.app&&app.flash()}catch(e){}}
-window.addEventListener('focus',()=>{if(S.cur&&S.unread[S.cur])markRead(S.cur)});
+window.addEventListener('focus',()=>{if(S.cur&&S.unread[S.cur])markRead(S.cur);if(S.cur&&document.activeElement===document.body)$('tx').focus()});
 function renderList(){$('list').innerHTML='';S.contacts.forEach(u=>{const d=document.createElement('div');d.className='c'+(u===S.cur?' on':'');
   const n=S.unread[u]||0;if(n)d.classList.add('un');d.innerHTML=`${avatar(u)}<b>@${u}</b>${n?`<span class="bd">${n>99?'99+':n}</span>`:''}`;d.onclick=()=>open(u);$('list').appendChild(d)})}
 async function open(u){S.cur=u;if(S.unread[u])markRead(u);renderList();head();$('msgs').innerHTML='';
-  (await api('/api/messages/'+u)).forEach(addMsg)}
+  (await api('/api/messages/'+u)).forEach(addMsg);$('tx').focus()}
 function addMsg(m){const d=document.createElement('div');d.className='m'+(m.from===S.me?' me':'');
   const t=document.createElement('span');t.textContent=m.text;d.appendChild(t);
   if(m.file){const a=document.createElement('a');a.className='f';a.href=`${S.url}/files/${m.file.id}?token=${S.tok}`;
@@ -157,11 +160,12 @@ function addMsg(m){const d=document.createElement('div');d.className='m'+(m.from
   $('msgs').appendChild(d);$('msgs').scrollTop=1e9}
 const refocus=()=>{try{window.app&&app.refocus()}catch(e){}setTimeout(()=>{if($('app').style.display!=='none')$('tx').focus()},80)};
 const send=file=>{const text=$('tx').value.trim();if(!S.cur||(!text&&!file))return;S.sock.emit('send',{to:S.cur,text,file});$('tx').value=''};
-$('sd').onclick=()=>send();$('tx').onkeydown=e=>e.key==='Enter'&&send();
-$('ab').onclick=()=>S.cur&&$('fi').click();
+$('bar').addEventListener('mousedown',e=>{if(e.target.tagName!=='BUTTON')setTimeout(()=>$('tx').focus(),0)});
+$('sd').onclick=()=>send();$('tx').onkeydown=e=>{if(e.key==='Enter')send()};
+$('ab').onclick=()=>{if(S.cur)$('fi').click()};
 $('fi').addEventListener('cancel',refocus);
 $('fi').onchange=async()=>{refocus();const f=$('fi').files[0];if(!f)return;const fd=new FormData();fd.append('file',f);
-  try{send(await api('/api/upload',{method:'POST',body:fd}))}catch(e){alert(e.message)}$('fi').value=''};
+  try{send(await api('/api/upload',{method:'POST',body:fd}))}catch(e){$('aerr').textContent=e.message}$('fi').value=''};
 $('nb').onclick=async()=>{try{const d=await api('/api/contacts',{method:'POST',body:JSON.stringify({username:$('nu').value})});
   S.contacts=d.contacts;$('nu').value='';$('aerr').textContent='';renderList()}catch(e){$('aerr').textContent=e.message}};
 

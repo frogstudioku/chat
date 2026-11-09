@@ -145,6 +145,7 @@ app.get('/files/:id', auth, (q, r) => {
   r.download(path.join(DATA, 'files', path.basename(q.params.id)), n);
 });
 app.get('/', (q, r) => r.type('html').send(fs.readFileSync(path.join(__dirname, 'index.html'))));
+app.use((err, q, r, n) => r.status(400).json({ error: 'Gagal: ' + (err.code === 'LIMIT_FILE_SIZE' ? 'file terlalu besar (maks 500 MB)' : err.message) }));
 io.use((s, n) => { const u = db.tokens[s.handshake.auth.token]; if (!u) return n(new Error('auth')); s.user = u; n(); });
 io.on('connection', s => {
   s.join(s.user);

@@ -18,7 +18,7 @@ html,body{height:100%;color:var(--ink);background:var(--bg);background-attachmen
 .c.un b{font-weight:800}
 #login{height:100%;display:flex;align-items:center;justify-content:center;padding-top:50px}
 #login .glass{width:380px;padding:30px;display:flex;flex-direction:column;gap:12px}
-.ctr{text-align:center} .lf{width:88px;height:88px;margin:0 auto 2px;padding:12px;border-radius:28px;background:var(--glass);border:1px solid var(--line);box-shadow:0 10px 26px var(--shadow)}
+.foot{text-align:center;font-size:12px;color:var(--mute);margin-top:2px} .ctr{text-align:center} .lf{width:88px;height:88px;margin:0 auto 2px;padding:12px;border-radius:28px;background:var(--glass);border:1px solid var(--line);box-shadow:0 10px 26px var(--shadow)}
 .links{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--mute);margin-top:-2px}
 .links a{color:#7b6af0;font-weight:600;text-decoration:none} [data-theme=dark] .links a{color:#c5baff} .links a:hover{text-decoration:underline}
 #logo.live{cursor:pointer} #logo.live:hover{box-shadow:0 0 0 3px rgba(255,120,150,.55),0 6px 16px var(--shadow)}
@@ -69,6 +69,7 @@ button.ghost{background:var(--field);color:var(--ink);box-shadow:none;border:1px
   <div class="links"><span><span id="swt"></span> <a href="#" id="sw"></a></span><a href="#" id="forgot">Lupa password?</a></div>
   <div class="err" id="err"></div>
   <button id="go"></button>
+  <div class="foot">&copy; 2026 Ari Fitriansyah</div>
 </div></div>
 <div id="app">
   <div id="side" class="glass"><div id="meRow"><div id="meAv" title="Ubah foto profil"></div><div><div class="hi">Halo 👋</div><h1 id="me"></h1></div></div>
@@ -102,7 +103,9 @@ function setMode(m,msg){mode=m;const c=MODES[m];$('lsub').textContent=c.t;['un',
 setMode('login');
 $('sw').onclick=e=>{e.preventDefault();setMode(mode==='login'?'reg':'login')};
 $('forgot').onclick=e=>{e.preventDefault();setMode('f1')};
-const api=async(p,o={})=>{const r=await fetch(S.url+p,{...o,headers:{Authorization:'Bearer '+S.tok,...(o.body&&!(o.body instanceof FormData)?{'Content-Type':'application/json'}:{})}});const j=await r.json();if(!r.ok)throw Error(j.error||'Gagal');return j};
+const api=async(p,o={})=>{const r=await fetch(S.url+p,{...o,headers:{Authorization:'Bearer '+S.tok,...(o.body&&!(o.body instanceof FormData)?{'Content-Type':'application/json'}:{})}});const j=await r.json();if(!r.ok){const e=Error(j.error||'Gagal');e.status=r.status;throw e}return j};
+const saveSession=()=>{try{localStorage.session=JSON.stringify({url:S.url,token:S.tok})}catch(e){}};
+const clearSession=()=>{try{localStorage.removeItem('session')}catch(e){}};
 const post=(p,b)=>api(p,{method:'POST',body:JSON.stringify(b)});
 $('go').onclick=async()=>{
   S.url=$('srv').value.trim().replace(/\/$/,'');localStorage.url=S.url;
@@ -111,7 +114,7 @@ $('go').onclick=async()=>{
     if(mode==='f1'){await post('/api/forgot',b);return setMode('f2','Jika akun ada, kode dikirim ke email (berlaku 10 menit). Jika tidak masuk, hubungi admin.')}
     if(mode==='f2'){await post('/api/reset',b);$('pw').value='';$('cd').value='';return setMode('login','Password berhasil diganti. Silakan masuk.')}
     const d=await post(mode==='reg'?'/api/register':'/api/login',b);
-    S.tok=d.token;S.me=d.username;S.contacts=d.contacts;await start()
+    S.tok=d.token;S.me=d.username;S.contacts=d.contacts;await start();saveSession()
   }catch(e){if(mode==='login'||mode==='reg'){S.tok=null}$('err').textContent=e.message}};
 async function start(){
   if(!window.io){const L=src=>new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s)});
@@ -126,7 +129,7 @@ async function start(){
 function logout(){if(!S.tok)return;$('cft').textContent='Keluar dari akun @'+S.me+'?';$('cf').classList.add('on')}
 async function doLogout(){$('cf').classList.remove('on');
   
-  try{await api('/api/logout',{method:'POST'})}catch(e){}
+  try{await api('/api/logout',{method:'POST'})}catch(e){}clearSession();
   try{S.sock&&S.sock.disconnect()}catch(e){}
   S.tok=S.me=S.cur=S.sock=null;S.contacts=[];S.av={};S.unread={};updateTotal();
   $('app').style.display='none';$('login').style.display='flex';$('logo').classList.remove('live');$('logo').title='';
@@ -180,4 +183,14 @@ $('pf').onchange=async()=>{refocus();const f=$('pf').files[0];$('pf').value='';i
   try{const fd=new FormData();fd.append('file',await toAvatar(f),'avatar.jpg');const d=await api('/api/avatar',{method:'POST',body:fd});S.av[S.me]=d.v;renderMe();renderList();if(S.cur)head();$('perr').textContent=''}
   catch(e){$('perr').textContent=e.message}};
 $('prem').onclick=async()=>{try{await api('/api/avatar/remove',{method:'POST'});delete S.av[S.me];renderMe();renderList();if(S.cur)head();$('perr').textContent=''}catch(e){$('perr').textContent=e.message}};
+// Masuk otomatis: sesi disimpan sampai pengguna menekan Keluar (ikon katak)
+(async()=>{
+  let s=null;try{s=JSON.parse(localStorage.session||'null')}catch(e){}
+  if(!s||!s.token)return;
+  $('login').style.visibility='hidden';S.url=s.url;S.tok=s.token;$('srv').value=S.url;
+  try{const d=await api('/api/me');S.me=d.username;S.contacts=d.contacts;await start()}
+  catch(e){S.tok=null;if(e.status===401){clearSession();setMode('login','Sesi berakhir, silakan masuk lagi.')}
+    else setMode('login','Tidak bisa terhubung ke server ('+S.url+'). Periksa koneksi, lalu masuk lagi.')}
+  finally{$('login').style.visibility=''}
+})();
 </script></body></html>

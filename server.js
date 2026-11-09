@@ -97,6 +97,7 @@ function login(r, u) {
   if (!db.msgs.some(m => m.from === BOT && m.to === u.username)) db.msgs.push({ id: crypto.randomUUID(), from: BOT, to: u.username, text: HELP, file: null, ts: Date.now() });
   save(); r.json({ token: t, username: u.username, contacts: u.contacts });
 }
+app.get('/api/me', auth, (q, r) => { if (!q.user.contacts.includes(BOT)) { q.user.contacts.unshift(BOT); save(); } r.json({ username: q.user.username, contacts: q.user.contacts }); });
 app.post('/api/logout', auth, (q, r) => { delete db.tokens[(q.headers.authorization || '').replace('Bearer ', '')]; save(); r.json({ ok: true }); });
 app.post('/api/contacts', auth, (q, r) => {
   const n = norm(q.body.username);
@@ -159,7 +160,7 @@ io.on('connection', s => {
   });
 });
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('=== Chat Frog Server jalan. Jangan tutup jendela ini. ===');
+  console.log('=== Chat Frog Server (c) 2026 Ari Fitriansyah. Jalan - jangan tutup jendela ini. ===');
   const ips = [].concat(...Object.values(require('os').networkInterfaces())).filter(i => i.family === 'IPv4' && !i.internal).map(i => i.address);
   console.log('Isi "Alamat server" di aplikasi dengan salah satu:'); ips.forEach(ip => console.log('   http://' + ip + ':' + PORT));
   console.log('Data tersimpan di: ' + DATA);

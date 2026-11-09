@@ -1,7 +1,7 @@
 {
   "name": "chat-frog",
   "version": "1.0.0",
-  "author": "Tim Internal",
+  "author": "Ari Fitriansyah",
   "description": "Chat Frog - chat internal tim",
   "main": "main.js",
   "scripts": {
@@ -36,6 +36,21 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.png"
+    },
+    "copyright": "Copyright (c) 2026 Ari Fitriansyah",
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "multiLanguageInstaller": true,
+      "installerLanguages": [
+        "id_ID",
+        "en_US"
+      ],
+      "license": "build/license.txt",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Chat Frog"
     }
   },
   "pkg": {
@@ -44,5 +59,6 @@
       "node_modules/socket.io/client-dist/**/*",
       "node_modules/socket.io-client/dist/**/*"
     ]
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE.txt"
 }

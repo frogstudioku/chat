@@ -34,7 +34,8 @@ app.post('/api/register', (q, r) => {
   if (DOMAIN && !email.endsWith('@' + DOMAIN)) return r.status(400).json({ error: 'Gunakan email kantor @' + DOMAIN });
   if (!/^[a-z0-9_.]{3,20}$/.test(username)) return r.status(400).json({ error: 'Username 3-20 karakter (huruf, angka, _ .)' });
   if (pw.length < 6) return r.status(400).json({ error: 'Password minimal 6 karakter' });
-  if (db.users[username] || Object.values(db.users).some(u => u.email === email)) return r.status(400).json({ error: 'Email/username sudah dipakai' });
+  if (db.users[username]) return r.status(400).json({ error: 'Username "' + username + '" sudah dipakai. Coba username lain, atau masuk jika itu akun Anda.' });
+  if (Object.values(db.users).some(u => u.email === email)) return r.status(400).json({ error: 'Email ini sudah terdaftar di akun lain. Masuk dengan username akun tersebut, atau pakai email lain.' });
   db.users[username] = { username, email, hash: bcrypt.hashSync(pw, 10), contacts: [] }; save();
   login(r, db.users[username]);
 });

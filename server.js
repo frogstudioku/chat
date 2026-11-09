@@ -19,6 +19,32 @@ const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
 db.resets = db.resets || {};
 const app = express(), server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' }, maxHttpBufferSize: 1e6 });
+// ===== Bot uji coba: @frogbot (otomatis jadi kontak semua user) =====
+const BOT = 'frogbot';
+if (!db.users[BOT]) { db.users[BOT] = { username: BOT, email: 'bot@chatfrog.local', hash: '!', contacts: [] }; save(); }
+function botSay(to, text, file) {
+  const m = { id: crypto.randomUUID(), from: BOT, to, text, file: file || null, ts: Date.now() };
+  db.msgs.push(m); save(); io.to(to).emit('msg', m);
+}
+const HELP = 'Halo, saya Frog Bot 🐸 untuk uji coba. Yang bisa dicoba:\n• Kirim teks apa saja: saya balas\n• Kirim file (📎): saya terima dan kirim balik\n• /file : saya kirim file contoh untuk diunduh\n• /spam : 3 balasan beruntun (tes real-time)\n• /time : jam server\n• /ping : tes koneksi';
+function botReply(user, m) {
+  const t = (m.text || '').trim().toLowerCase();
+  setTimeout(() => {
+    if (m.file) return botSay(user, '✅ File diterima: ' + m.file.name + ' (' + Math.max(1, Math.round(m.file.size / 1024)) + ' KB). Saya kirim balik, coba unduh untuk memastikan file utuh.', m.file);
+    if (t === '/ping') return botSay(user, 'pong 🐸 koneksi real-time berfungsi.');
+    if (t === '/time') return botSay(user, 'Jam server: ' + new Date().toLocaleString('id-ID'));
+    if (t === '/spam') return [1, 2, 3].forEach(i => setTimeout(() => botSay(user, 'Pesan beruntun ' + i + ' dari 3'), i * 400));
+    if (t === '/file') {
+      const id = crypto.randomBytes(16).toString('hex'), body = 'Ini file contoh dari Frog Bot.\nDibuat: ' + new Date().toISOString() + '\n';
+      fs.writeFileSync(path.join(DATA, 'files', id), body); db.files[id] = 'contoh-dari-bot.txt'; save();
+      return botSay(user, 'Ini file contoh. Coba klik untuk mengunduh.', { id, name: 'contoh-dari-bot.txt', size: Buffer.byteLength(body) });
+    }
+    if (t === '/help' || t === 'help' || t === 'halo' || t === 'hi') return botSay(user, HELP);
+    botSay(user, 'Kamu bilang: "' + m.text + '" 🐸 Ketik /help untuk daftar perintah.');
+  }, 600);
+}
+// ===================================================================
+
 app.use((q, r, n) => { r.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization,Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); q.method === 'OPTIONS' ? r.end() : n(); });
 app.use(express.json());
 const upload = multer({ dest: DATA + '/files', limits: { fileSize: 500 * 1024 * 1024 } });
@@ -65,7 +91,12 @@ app.post('/api/reset', (q, r) => {
   for (const t in db.tokens) if (db.tokens[t] === u.username) delete db.tokens[t]; // logout semua sesi lama
   save(); r.json({ ok: true });
 });
-function login(r, u) { const t = crypto.randomBytes(24).toString('hex'); db.tokens[t] = u.username; save(); r.json({ token: t, username: u.username, contacts: u.contacts }); }
+function login(r, u) {
+  const t = crypto.randomBytes(24).toString('hex'); db.tokens[t] = u.username;
+  if (!u.contacts.includes(BOT)) u.contacts.unshift(BOT);
+  if (!db.msgs.some(m => m.from === BOT && m.to === u.username)) db.msgs.push({ id: crypto.randomUUID(), from: BOT, to: u.username, text: HELP, file: null, ts: Date.now() });
+  save(); r.json({ token: t, username: u.username, contacts: u.contacts });
+}
 app.post('/api/logout', auth, (q, r) => { delete db.tokens[(q.headers.authorization || '').replace('Bearer ', '')]; save(); r.json({ ok: true }); });
 app.post('/api/contacts', auth, (q, r) => {
   const n = norm(q.body.username);
@@ -96,6 +127,7 @@ io.on('connection', s => {
     db.msgs.push(m);
     [[s.user, to], [to, s.user]].forEach(([a, b]) => { const c = db.users[a].contacts; if (!c.includes(b)) c.push(b); });
     save(); io.to(s.user).to(to).emit('msg', m);
+    if (to === BOT) botReply(s.user, m);
   });
 });
 server.listen(PORT, '0.0.0.0', () => {

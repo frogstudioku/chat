@@ -4,13 +4,18 @@ const express = require('express'), http = require('http'), { Server } = require
 const multer = require('multer'), bcrypt = require('bcryptjs'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const BASE = process.pkg ? path.dirname(process.execPath) : __dirname; // folder .exe (mode tanpa Node.js)
-try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(path.join(BASE, 'config.json'), 'utf8')))) process.env[k] = String(v); } catch (e) { if (e.code !== 'ENOENT') console.log('PERINGATAN config.json tidak valid (cek koma/tanda kutip): ' + e.message); } // config.json opsional
+try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(path.join(BASE, 'config.json'), 'utf8')))) process.env[k] = String(v); } catch (e) {
+  if (e.code !== 'ENOENT') console.log('PERINGATAN config.json tidak valid (cek koma/tanda kutip): ' + e.message);
+  else try { fs.writeFileSync(path.join(BASE, 'config.json'), JSON.stringify({ _catatan: 'Isi SMTP_* agar kode reset password terkirim ke email, simpan, lalu jalankan ulang server.', PORT: 3000, ALLOWED_DOMAIN: '', SMTP_HOST: '', SMTP_PORT: 465, SMTP_USER: '', SMTP_PASS: '', SMTP_FROM: '' }, null, 2)); console.log('config.json contoh dibuat di ' + BASE + ' - isi pengaturan SMTP di dalamnya.'); } catch (e2) {}
+} // config.json opsional
 const PORT = process.env.PORT || 3000, DOMAIN = (process.env.ALLOWED_DOMAIN || '').toLowerCase();
 const DATA = path.join(BASE, 'data'); fs.mkdirSync(DATA + '/files', { recursive: true });
 const DBF = DATA + '/db.json';
 const db = fs.existsSync(DBF) ? JSON.parse(fs.readFileSync(DBF)) : { users: {}, msgs: [], tokens: {}, files: {} };
 const save = () => fs.writeFileSync(DBF, JSON.stringify(db));
-const mailer = process.env.SMTP_HOST ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: +(process.env.SMTP_PORT || 465), secure: (process.env.SMTP_PORT || 465) == 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }, tls: process.env.SMTP_ALLOW_SELF_SIGNED === 'true' ? { rejectUnauthorized: false } : undefined }) : null;
+let mailer = null;
+function makeMailer() { mailer = process.env.SMTP_HOST ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: +(process.env.SMTP_PORT || 465), secure: (process.env.SMTP_PORT || 465) == 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }, tls: process.env.SMTP_ALLOW_SELF_SIGNED === 'true' ? { rejectUnauthorized: false } : undefined }) : null; }
+makeMailer();
 async function sendCode(to, code) {
   if (!mailer) return console.log('[DEV] SMTP belum diatur. Kode reset untuk ' + to + ': ' + code);
   await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject: 'Kode reset password TeamChat', text: 'Kode reset password Anda: ' + code + '\nBerlaku 10 menit. Abaikan email ini jika Anda tidak memintanya.' });
@@ -145,6 +150,47 @@ app.get('/files/:id', auth, (q, r) => {
   const n = db.files[q.params.id]; if (!n) return r.sendStatus(404);
   r.download(path.join(DATA, 'files', path.basename(q.params.id)), n);
 });
+const SETUP_HTML = `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Pengaturan Email - Chat Frog</title>
+<style>body{font-family:Segoe UI,sans-serif;background:linear-gradient(150deg,#e8e3ff,#dcd3fb);display:flex;justify-content:center;padding:40px 16px;color:#2b2459;margin:0}
+.c{background:#fff;border-radius:24px;padding:28px;width:430px;max-width:100%;box-shadow:0 12px 36px rgba(110,90,200,.2);display:flex;flex-direction:column;gap:10px;align-self:flex-start}
+h2{margin:0}input,select{padding:11px 13px;border:1px solid #c9c0f5;border-radius:12px;font-size:14px}
+button{padding:12px;border:0;border-radius:12px;background:#7b6af0;color:#fff;font-weight:600;cursor:pointer;font-size:14px}
+.m{font-size:13px;min-height:18px}.ok{color:#1d8a3f}.er{color:#d6336c}small{color:#6f679c}hr{border:0;border-top:1px solid #e3defc;width:100%}</style>
+<div class=c><h2>&#128056; Pengaturan Email Chat Frog</h2>
+<small>Akun ini dipakai server untuk mengirim kode reset password. Cukup diisi sekali, tanpa perlu restart.</small><small><b>__STATUS__</b></small>
+<select id=p><option value=gmail>Gmail</option><option value=o365>Office 365</option><option value=lain>Lainnya (data dari IT kantor)</option></select>
+<input id=h placeholder="Server SMTP"><input id=pt placeholder="Port">
+<input id=u placeholder="Email pengirim" type=email><input id=w placeholder="Password / App Password" type=password>
+<small id=hint></small><button id=s>Simpan &amp; Tes Koneksi</button><div id=m class=m></div>
+<hr><input id=to placeholder="Kirim email tes ke (alamat email Anda)" type=email><button id=t>Kirim Email Tes</button><div id=m2 class=m></div></div>
+<script>
+var P={gmail:['smtp.gmail.com',465,'Gmail: gunakan App Password (bukan password biasa). Verifikasi 2 langkah harus aktif.'],o365:['smtp.office365.com',587,'Office 365: SMTP AUTH harus diizinkan oleh admin IT.'],lain:['',587,'Isi server dan port sesuai data dari IT kantor.']};
+function $(i){return document.getElementById(i)}
+function pick(){var x=P[$('p').value];$('h').value=x[0];$('pt').value=x[1];$('hint').textContent=x[2]}
+$('p').onchange=pick;pick();
+function post(u,b,el){el.className='m';el.textContent='Memproses...';return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(function(j){el.className='m '+(j.ok?'ok':'er');el.textContent=j.ok?j.msg:j.error}).catch(function(e){el.className='m er';el.textContent='Gagal: '+e.message})}
+$('s').onclick=function(){post('/setup/save',{host:$('h').value,port:$('pt').value,user:$('u').value,pass:$('w').value},$('m'))};
+$('t').onclick=function(){post('/setup/test',{to:$('to').value},$('m2'))};
+</script>`;
+const OWN_IPS = [].concat(...Object.values(require('os').networkInterfaces())).map(i => i.address);
+const isLocal = q => { const a = String(q.socket.remoteAddress || '').replace('::ffff:', ''); return a === '127.0.0.1' || a === '::1' || OWN_IPS.includes(a); };
+app.get('/setup', (q, r) => isLocal(q) ? r.type('html').send(SETUP_HTML.replace('__STATUS__', mailer ? 'Status: email aktif (' + process.env.SMTP_HOST + ')' : 'Status: email belum diatur')) : r.status(403).send('Halaman ini hanya bisa dibuka dari PC server: http://localhost:' + PORT + '/setup'));
+app.post('/setup/save', async (q, r) => {
+  if (!isLocal(q)) return r.sendStatus(403);
+  const b = q.body || {}; if (!b.host || !b.user || !b.pass) return r.json({ error: 'Server, email, dan password wajib diisi' });
+  const f = path.join(BASE, 'config.json'); let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
+  const user = String(b.user).trim(), host = String(b.host).trim();
+  Object.assign(cfg, { SMTP_HOST: host, SMTP_PORT: +b.port || 465, SMTP_USER: user, SMTP_PASS: /gmail/i.test(host) ? String(b.pass).replace(/\s+/g, '') : String(b.pass), SMTP_FROM: 'Chat Frog <' + user + '>' });
+  try { fs.writeFileSync(f, JSON.stringify(cfg, null, 2)); } catch (e) { return r.json({ error: 'Gagal menyimpan config.json: ' + e.message }); }
+  for (const k of Object.keys(cfg)) process.env[k] = String(cfg[k]); makeMailer();
+  try { await mailer.verify(); r.json({ ok: true, msg: 'Tersimpan dan koneksi email berhasil. Coba kirim email tes di bawah.' }); }
+  catch (e) { r.json({ error: 'Tersimpan, tetapi koneksi gagal: ' + e.message }); }
+});
+app.post('/setup/test', async (q, r) => {
+  if (!isLocal(q)) return r.sendStatus(403); if (!mailer) return r.json({ error: 'Simpan pengaturan dulu' });
+  try { await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: String((q.body || {}).to || '').trim(), subject: 'Tes email Chat Frog', text: 'Berhasil! Email dari server Chat Frog berfungsi.' }); r.json({ ok: true, msg: 'Email tes terkirim. Cek inbox (dan folder Spam).' }); }
+  catch (e) { r.json({ error: 'Gagal mengirim: ' + e.message }); }
+});
 app.get('/', (q, r) => r.type('html').send(fs.readFileSync(path.join(__dirname, 'index.html'))));
 app.use((err, q, r, n) => r.status(400).json({ error: 'Gagal: ' + (err.code === 'LIMIT_FILE_SIZE' ? 'file terlalu besar (maks 500 MB)' : err.message) }));
 io.use((s, n) => { const u = db.tokens[s.handshake.auth.token]; if (!u) return n(new Error('auth')); s.user = u; n(); });
@@ -166,5 +212,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('Data tersimpan di: ' + DATA);
   console.log(fs.existsSync(path.join(BASE, 'config.json')) ? 'config.json: dimuat' : 'config.json: TIDAK ditemukan di ' + BASE);
   if (mailer) mailer.verify().then(() => console.log('Email (SMTP): OK - ' + process.env.SMTP_HOST), e => console.log('Email (SMTP): GAGAL - ' + e.message));
-  else console.log('Email (SMTP): belum diatur, kode reset hanya tampil di jendela ini');
+  else {
+    console.log('Email (SMTP): belum diatur. Mengatur email: buka http://localhost:' + PORT + '/setup di PC ini.');
+    if (process.pkg) { try { require('child_process').exec('start "" "http://localhost:' + PORT + '/setup"'); console.log('Membuka halaman pengaturan email di browser...'); } catch (e) {} }
+  }
 });

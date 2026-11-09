@@ -93,11 +93,12 @@ $('go').onclick=async()=>{
     if(mode==='f1'){await post('/api/forgot',b);return setMode('f2','Jika akun ada, kode dikirim ke email (berlaku 10 menit).')}
     if(mode==='f2'){await post('/api/reset',b);$('pw').value='';$('cd').value='';return setMode('login','Password berhasil diganti. Silakan masuk.')}
     const d=await post(mode==='reg'?'/api/register':'/api/login',b);
-    S.tok=d.token;S.me=d.username;S.contacts=d.contacts;start()
-  }catch(e){$('err').textContent=e.message}};
+    S.tok=d.token;S.me=d.username;S.contacts=d.contacts;await start()
+  }catch(e){if(mode==='login'||mode==='reg'){S.tok=null}$('err').textContent=e.message}};
 async function start(){
-  if(!window.io)await new Promise(r=>{const s=document.createElement('script');s.src=S.url+'/socket.io/socket.io.js';s.onload=r;document.head.appendChild(s)});
+  if(!window.io)await new Promise((ok,no)=>{const s=document.createElement('script');s.src=S.url+'/socket.io/socket.io.js';s.onload=ok;s.onerror=()=>no(Error('Gagal memuat modul chat dari server ('+S.url+'/socket.io/socket.io.js). Pastikan server versi terbaru berjalan.'));document.head.appendChild(s)});
   S.sock=io(S.url,{auth:{token:S.tok}});
+  S.sock.on('connect',()=>{$('aerr').textContent=''});S.sock.on('connect_error',e=>{$('aerr').textContent='Koneksi realtime gagal: '+e.message});
   S.sock.on('msg',m=>{const o=m.from===S.me?m.to:m.from;if(!S.contacts.includes(o)){S.contacts.push(o);renderList()}
     if(o===S.cur)addMsg(m)});
   $('login').style.display='none';$('app').style.display='flex';$('logo').classList.add('live');$('logo').title='Klik untuk keluar';$('me').textContent='@'+S.me;renderList()}

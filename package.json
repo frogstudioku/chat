@@ -7,7 +7,8 @@
   "scripts": {
     "server": "node server.js",
     "app": "electron .",
-    "build": "electron-builder --win --publish never"
+    "build": "electron-builder --win --publish never",
+    "build:server": "pkg server.js --targets node20-win-x64 --output server-dist/chatfrog-server.exe"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -18,7 +19,8 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "@yao-pkg/pkg": "^5.12.0"
   },
   "build": {
     "appId": "com.internal.chatfrog",
@@ -32,5 +34,10 @@
       "target": "nsis",
       "icon": "build/icon.png"
     }
+  },
+  "pkg": {
+    "assets": [
+      "index.html"
+    ]
   }
 }

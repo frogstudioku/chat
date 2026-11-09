@@ -84,6 +84,7 @@ function setMode(m,msg){mode=m;const c=MODES[m];$('lsub').textContent=c.t;['un',
 setMode('login');
 $('sw').onclick=e=>{e.preventDefault();setMode(mode==='login'?'reg':'login')};
 $('forgot').onclick=e=>{e.preventDefault();setMode('f1')};
+const api=async(p,o={})=>{const r=await fetch(S.url+p,{...o,headers:{Authorization:'Bearer '+S.tok,...(o.body&&!(o.body instanceof FormData)?{'Content-Type':'application/json'}:{})}});const j=await r.json();if(!r.ok)throw Error(j.error||'Gagal');return j};
 const post=(p,b)=>api(p,{method:'POST',body:JSON.stringify(b)});
 $('go').onclick=async()=>{
   S.url=$('srv').value.trim().replace(/\/$/,'');localStorage.url=S.url;
